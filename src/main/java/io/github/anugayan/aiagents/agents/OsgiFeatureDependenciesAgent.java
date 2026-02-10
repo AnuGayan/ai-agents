@@ -258,8 +258,146 @@ public class OsgiFeatureDependenciesAgent {
     
     /**
      * Extract dependencies from a Maven POM file in a feature directory
+     * First tries to extract from carbon-p2-plugin bundles configuration,
+     * falls back to dependencies if not found
      */
     private List<OsgiDependency> extractDependenciesFromPom(File pomFile) {
+        List<OsgiDependency> dependencies = new ArrayList<>();
+        
+        try {
+            // First try to extract bundles from carbon-p2-plugin configuration
+            dependencies = extractBundlesFromP2Plugin(pomFile);
+            
+            // If no bundles found in p2-plugin, fall back to dependencies
+            if (dependencies.isEmpty()) {
+                dependencies = extractDependenciesFromPomDependencies(pomFile);
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error parsing POM file: {}", pomFile.getPath(), e);
+        }
+        
+        return dependencies;
+    }
+    
+    /**
+     * Extract bundles from carbon-p2-plugin configuration in POM
+     */
+    private List<OsgiDependency> extractBundlesFromP2Plugin(File pomFile) {
+        List<OsgiDependency> bundles = new ArrayList<>();
+        
+        try {
+            SAXReader reader = new SAXReader();
+            // Disable external entity resolution to prevent XXE attacks
+            reader.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            reader.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            reader.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            Document document = reader.read(pomFile);
+            Element root = document.getRootElement();
+            
+            // Navigate to build/plugins
+            Element build = root.element("build");
+            if (build != null) {
+                Element plugins = build.element("plugins");
+                if (plugins != null) {
+                    // Find carbon-p2-plugin
+                    for (Element plugin : plugins.elements("plugin")) {
+                        Element artifactId = plugin.element("artifactId");
+                        if (artifactId != null && "carbon-p2-plugin".equals(artifactId.getText())) {
+                            // Found carbon-p2-plugin, extract bundles
+                            bundles.addAll(extractBundlesFromPlugin(plugin));
+                            break;
+                        }
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.debug("Could not extract bundles from carbon-p2-plugin in {}", pomFile.getPath(), e);
+        }
+        
+        return bundles;
+    }
+    
+    /**
+     * Extract bundle definitions from carbon-p2-plugin configuration
+     */
+    private List<OsgiDependency> extractBundlesFromPlugin(Element plugin) {
+        List<OsgiDependency> bundles = new ArrayList<>();
+        
+        try {
+            Element executions = plugin.element("executions");
+            if (executions != null) {
+                for (Element execution : executions.elements("execution")) {
+                    Element configuration = execution.element("configuration");
+                    if (configuration != null) {
+                        Element bundlesElement = configuration.element("bundles");
+                        if (bundlesElement != null) {
+                            // Extract bundleDef elements
+                            for (Element bundleDef : bundlesElement.elements("bundleDef")) {
+                                OsgiDependency dep = parseBundleDef(bundleDef.getText());
+                                if (dep != null) {
+                                    bundles.add(dep);
+                                }
+                            }
+                            
+                            // Extract importBundleDef elements
+                            for (Element importBundleDef : bundlesElement.elements("importBundleDef")) {
+                                OsgiDependency dep = parseBundleDef(importBundleDef.getText());
+                                if (dep != null) {
+                                    dep.setType("import-bundle");
+                                    bundles.add(dep);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("Error extracting bundles from plugin configuration", e);
+        }
+        
+        return bundles;
+    }
+    
+    /**
+     * Parse bundle definition in format: groupId:artifactId[:version]
+     * Example: org.wso2.carbon.apimgt:org.wso2.carbon.apimgt.gateway
+     * Example: org.wso2.carbon.apimgt:org.wso2.carbon.apimgt.api:${carbon.apimgt.version}
+     */
+    private OsgiDependency parseBundleDef(String bundleDef) {
+        if (bundleDef == null || bundleDef.trim().isEmpty()) {
+            return null;
+        }
+        
+        try {
+            String[] parts = bundleDef.trim().split(":");
+            if (parts.length >= 2) {
+                OsgiDependency dep = new OsgiDependency();
+                dep.setGroupId(parts[0].trim());
+                dep.setArtifactId(parts[1].trim());
+                
+                // Version is optional, might be a property reference like ${carbon.apimgt.version}
+                if (parts.length >= 3 && !parts[2].trim().isEmpty()) {
+                    dep.setVersion(parts[2].trim());
+                } else {
+                    dep.setVersion(UNSPECIFIED_VERSION);
+                }
+                
+                dep.setType("bundle");
+                return dep;
+            }
+        } catch (Exception e) {
+            logger.debug("Could not parse bundle definition: {}", bundleDef, e);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extract dependencies from POM dependencies section (fallback method)
+     */
+    private List<OsgiDependency> extractDependenciesFromPomDependencies(File pomFile) {
         List<OsgiDependency> dependencies = new ArrayList<>();
         
         try {
@@ -288,7 +426,7 @@ public class OsgiFeatureDependenciesAgent {
             }
             
         } catch (Exception e) {
-            logger.error("Error parsing POM file: {}", pomFile.getPath(), e);
+            logger.error("Error parsing dependencies from POM file: {}", pomFile.getPath(), e);
         }
         
         return dependencies;
