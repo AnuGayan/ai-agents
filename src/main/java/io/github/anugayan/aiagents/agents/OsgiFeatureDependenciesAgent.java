@@ -1,6 +1,9 @@
 package io.github.anugayan.aiagents.agents;
 
 import io.github.anugayan.aiagents.utils.GitRepoCloner;
+import org.apache.maven.model.Dependency;
+import org.apache.maven.model.Model;
+import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
 import org.dom4j.Document;
 import org.dom4j.Element;
 import org.dom4j.io.SAXReader;
@@ -8,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,13 +19,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Agent to extract dependencies from OSGI feature files
+ * Agent to extract dependencies from OSGI features in multiple formats:
+ * - Karaf-style feature XML files
+ * - Maven POMs in feature directories
+ * - p2.inf files (Eclipse P2 format)
  */
 public class OsgiFeatureDependenciesAgent {
     private static final Logger logger = LoggerFactory.getLogger(OsgiFeatureDependenciesAgent.class);
 
     /**
      * Extract all dependencies bundled in OSGI features from a Maven project
+     * Supports multiple formats: Karaf XML, Maven POMs, and p2.inf files
      *
      * @param repoUrl Git repository URL
      * @param branch Branch name
@@ -34,18 +42,29 @@ public class OsgiFeatureDependenciesAgent {
             // Clone the repository
             repoDir = GitRepoCloner.cloneRepository(repoUrl, branch, token);
 
-            // Find all feature XML files
-            List<File> featureFiles = findFeatureFiles(repoDir);
-            logger.info("Found {} feature XML files", featureFiles.size());
-
-            // Extract dependencies from each feature file
             Map<String, List<OsgiDependency>> allDependencies = new HashMap<>();
-            for (File featureFile : featureFiles) {
-                String featureName = extractFeatureName(featureFile);
-                List<OsgiDependency> dependencies = extractDependenciesFromFeature(featureFile);
+            
+            // Extract from Karaf-style feature XML files
+            List<File> karafFiles = findKarafFeatureFiles(repoDir);
+            logger.info("Found {} Karaf-style feature XML files", karafFiles.size());
+            for (File featureFile : karafFiles) {
+                String featureName = extractKarafFeatureName(featureFile);
+                List<OsgiDependency> dependencies = extractDependenciesFromKarafFeature(featureFile);
                 if (!dependencies.isEmpty()) {
                     allDependencies.put(featureName, dependencies);
-                    logger.info("Feature '{}' has {} dependencies", featureName, dependencies.size());
+                    logger.info("Feature '{}' has {} dependencies from Karaf XML", featureName, dependencies.size());
+                }
+            }
+            
+            // Extract from Maven POMs in feature directories
+            List<File> featurePoms = findFeaturePoms(repoDir);
+            logger.info("Found {} feature POMs", featurePoms.size());
+            for (File pomFile : featurePoms) {
+                String featureName = extractPomFeatureName(pomFile);
+                List<OsgiDependency> dependencies = extractDependenciesFromPom(pomFile);
+                if (!dependencies.isEmpty()) {
+                    allDependencies.put(featureName, dependencies);
+                    logger.info("Feature '{}' has {} dependencies from POM", featureName, dependencies.size());
                 }
             }
 
@@ -67,22 +86,22 @@ public class OsgiFeatureDependenciesAgent {
     }
 
     /**
-     * Find all feature XML files in a directory recursively
+     * Find all Karaf-style feature XML files in a directory recursively
      */
-    private List<File> findFeatureFiles(File directory) {
+    private List<File> findKarafFeatureFiles(File directory) {
         List<File> featureFiles = new ArrayList<>();
-        findFeatureFilesRecursive(directory, featureFiles);
+        findKarafFeatureFilesRecursive(directory, featureFiles);
         return featureFiles;
     }
 
-    private void findFeatureFilesRecursive(File directory, List<File> featureFiles) {
+    private void findKarafFeatureFilesRecursive(File directory, List<File> featureFiles) {
         File[] files = directory.listFiles();
         if (files != null) {
             for (File file : files) {
                 if (file.isDirectory()) {
                     // Skip common non-feature directories
                     if (!file.getName().equals("target") && !file.getName().equals(".git")) {
-                        findFeatureFilesRecursive(file, featureFiles);
+                        findKarafFeatureFilesRecursive(file, featureFiles);
                     }
                 } else if (file.getName().endsWith("-features.xml") || 
                           (file.getName().equals("features.xml"))) {
@@ -91,11 +110,46 @@ public class OsgiFeatureDependenciesAgent {
             }
         }
     }
+    
+    /**
+     * Find all feature POMs in the repository
+     * Looks for POMs in directories matching *.feature pattern under features/
+     */
+    private List<File> findFeaturePoms(File directory) {
+        List<File> featurePoms = new ArrayList<>();
+        findFeaturePomsRecursive(directory, featurePoms);
+        return featurePoms;
+    }
+    
+    private void findFeaturePomsRecursive(File directory, List<File> featurePoms) {
+        File[] files = directory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    // Skip common non-feature directories
+                    if (file.getName().equals("target") || file.getName().equals(".git")) {
+                        continue;
+                    }
+                    
+                    // Check if this is a feature directory (ends with .feature)
+                    if (file.getName().endsWith(".feature")) {
+                        File pomFile = new File(file, "pom.xml");
+                        if (pomFile.exists() && pomFile.isFile()) {
+                            featurePoms.add(pomFile);
+                        }
+                    }
+                    
+                    // Continue recursing for nested feature directories
+                    findFeaturePomsRecursive(file, featurePoms);
+                }
+            }
+        }
+    }
 
     /**
-     * Extract feature name from the file path or content
+     * Extract feature name from Karaf feature file path or content
      */
-    private String extractFeatureName(File featureFile) {
+    private String extractKarafFeatureName(File featureFile) {
         try {
             SAXReader reader = new SAXReader();
             // Disable external entity resolution to prevent XXE attacks
@@ -121,11 +175,32 @@ public class OsgiFeatureDependenciesAgent {
         // Fallback to file name
         return featureFile.getName().replace("-features.xml", "").replace("features.xml", "features");
     }
+    
+    /**
+     * Extract feature name from POM file
+     */
+    private String extractPomFeatureName(File pomFile) {
+        try {
+            MavenXpp3Reader reader = new MavenXpp3Reader();
+            Model model = reader.read(new FileReader(pomFile));
+            
+            // Use artifactId as feature name
+            String artifactId = model.getArtifactId();
+            if (artifactId != null) {
+                return artifactId;
+            }
+        } catch (Exception e) {
+            logger.debug("Could not extract feature name from POM, using parent directory name", e);
+        }
+        
+        // Fallback to parent directory name
+        return pomFile.getParentFile().getName();
+    }
 
     /**
-     * Extract dependencies from a feature XML file
+     * Extract dependencies from a Karaf feature XML file
      */
-    private List<OsgiDependency> extractDependenciesFromFeature(File featureFile) {
+    private List<OsgiDependency> extractDependenciesFromKarafFeature(File featureFile) {
         List<OsgiDependency> dependencies = new ArrayList<>();
         
         try {
@@ -163,9 +238,47 @@ public class OsgiFeatureDependenciesAgent {
             }
 
         } catch (Exception e) {
-            logger.error("Error parsing feature file: {}", featureFile.getPath(), e);
+            logger.error("Error parsing Karaf feature file: {}", featureFile.getPath(), e);
         }
 
+        return dependencies;
+    }
+    
+    /**
+     * Extract dependencies from a Maven POM file in a feature directory
+     */
+    private List<OsgiDependency> extractDependenciesFromPom(File pomFile) {
+        List<OsgiDependency> dependencies = new ArrayList<>();
+        
+        try {
+            MavenXpp3Reader reader = new MavenXpp3Reader();
+            Model model = reader.read(new FileReader(pomFile));
+            
+            // Extract dependencies
+            List<Dependency> pomDependencies = model.getDependencies();
+            if (pomDependencies != null) {
+                for (Dependency dep : pomDependencies) {
+                    OsgiDependency osgiDep = new OsgiDependency();
+                    osgiDep.setGroupId(dep.getGroupId());
+                    osgiDep.setArtifactId(dep.getArtifactId());
+                    osgiDep.setVersion(dep.getVersion() != null ? dep.getVersion() : "unspecified");
+                    
+                    // Determine type based on packaging or scope
+                    String type = dep.getType();
+                    if ("war".equalsIgnoreCase(type) || "jar".equalsIgnoreCase(type) || type == null) {
+                        osgiDep.setType("bundle");
+                    } else {
+                        osgiDep.setType(type);
+                    }
+                    
+                    dependencies.add(osgiDep);
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error parsing POM file: {}", pomFile.getPath(), e);
+        }
+        
         return dependencies;
     }
 
