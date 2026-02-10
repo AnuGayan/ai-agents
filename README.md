@@ -60,6 +60,58 @@ java -jar ai-agents.jar extract-features https://github.com/wso2/carbon-apimgt m
 java -jar ai-agents.jar extract-features https://github.com/apache/karaf main
 ```
 
+### 3. Multi-Branch OSGI Dependencies Agent
+Extracts OSGI feature dependencies from multiple repositories across multiple branches matching a specific pattern. This agent is designed to analyze dependencies across multiple support branches in one or more repositories.
+
+**Key Features:**
+- Processes multiple Git repositories in a single run
+- Automatically discovers and filters branches that start with `support-` and end with `x-full`
+- Extracts dependencies from each matching branch using the OSGI Feature Dependencies Agent
+- Outputs results to a CSV file with columns: Repository, Branch, GroupId, ArtifactId, Version
+- Handles errors gracefully - continues processing even if some repositories or branches fail
+
+**Usage:**
+```bash
+java -jar ai-agents.jar extract-multi-branch <output-csv-file> <repo-url-1> [repo-url-2] ... [token]
+```
+
+**Parameters:**
+- `output-csv-file`: Path where the CSV file will be created (e.g., `dependencies.csv`)
+- `repo-url-1, repo-url-2, ...`: One or more Git repository URLs to process
+- `token`: Optional GitHub token for private repositories (should be the last argument if provided)
+
+**Example:**
+```bash
+# Process single repository
+java -jar ai-agents.jar extract-multi-branch dependencies.csv https://github.com/wso2/carbon-apimgt
+
+# Process multiple repositories
+java -jar ai-agents.jar extract-multi-branch dependencies.csv \
+  https://github.com/wso2/carbon-apimgt \
+  https://github.com/wso2/carbon-identity
+
+# With authentication token
+java -jar ai-agents.jar extract-multi-branch dependencies.csv \
+  https://github.com/user/private-repo \
+  ghp_your_token_here
+```
+
+**Output Format:**
+The generated CSV file contains the following columns:
+- `Repository`: Name of the repository (extracted from URL)
+- `Branch`: Branch name (e.g., `support-4.2.x-full`)
+- `GroupId`: Maven dependency group ID
+- `ArtifactId`: Maven dependency artifact ID
+- `Version`: Dependency version
+
+**Branch Filtering:**
+Only branches matching the pattern `support-*x-full` are processed. For example:
+- ✅ `support-4.2.x-full` - Processed
+- ✅ `support-5.0.x-full` - Processed
+- ❌ `support-4.1.x` - Skipped (doesn't end with `x-full`)
+- ❌ `main` - Skipped (doesn't start with `support-`)
+- ❌ `develop` - Skipped (doesn't match pattern)
+
 ## Building
 
 Build the project using Maven:
@@ -103,6 +155,23 @@ This will create a JAR file in the `target` directory: `ai-agents-1.0.0-SNAPSHOT
 - Apache Karaf and Karaf-based projects (using feature XML files)
 - WSO2 Carbon projects (using Maven POM features with carbon-p2-plugin)
 - Eclipse P2-based projects (infrastructure ready)
+
+### Multi-Branch OSGI Dependencies Agent
+1. For each provided repository URL:
+   - Lists all remote branches using Git ls-remote
+   - Filters branches to find those matching the pattern `support-*x-full`
+   - For each matching branch:
+     - Extracts dependencies using the OSGI Feature Dependencies Agent
+     - Records each dependency with repository name, branch name, and Maven coordinates
+2. Aggregates all dependencies from all repositories and branches
+3. Writes the results to a CSV file with proper escaping for special characters
+4. Handles errors gracefully - if a repository or branch fails, it logs the error and continues
+5. Returns the total count of dependency records extracted
+
+**Performance Considerations:**
+- Each branch is cloned separately, so processing time scales with the number of matching branches
+- Failed operations don't stop the overall process - the agent continues with remaining repositories/branches
+- Temporary directories are automatically cleaned up after each branch is processed
 
 ## License
 
