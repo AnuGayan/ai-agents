@@ -73,22 +73,29 @@ Files in directories matching `*.feature` pattern:
 - `org.wso2.carbon.apimgt.gateway.feature/pom.xml`
 - `org.apache.karaf.features.core.feature/pom.xml`
 
-Dependencies are extracted from the `<dependencies>` section of the POM.
+Bundles are extracted from the `carbon-p2-plugin` `<bundles>` configuration section, which specifies the actual JARs that get packed into the feature.
 
 Example:
 ```xml
-<project>
-    <artifactId>org.wso2.carbon.apimgt.gateway.feature</artifactId>
-    <packaging>pom</packaging>
-    <dependencies>
-        <dependency>
-            <groupId>org.wso2.carbon.apimgt</groupId>
-            <artifactId>org.wso2.carbon.apimgt.api</artifactId>
-            <version>9.0.0</version>
-        </dependency>
-    </dependencies>
-</project>
+<plugin>
+    <artifactId>carbon-p2-plugin</artifactId>
+    <executions>
+        <execution>
+            <id>4-p2-feature-generation</id>
+            <configuration>
+                <bundles>
+                    <bundleDef>org.wso2.carbon.apimgt:org.wso2.carbon.apimgt.gateway</bundleDef>
+                    <bundleDef>org.wso2.carbon.apimgt:org.wso2.carbon.apimgt.impl</bundleDef>
+                    <bundleDef>com.fasterxml.jackson.core:jackson-core</bundleDef>
+                    <importBundleDef>org.wso2.carbon.mediation:org.wso2.carbon.rest.api.stub</importBundleDef>
+                </bundles>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
 ```
+
+If no `carbon-p2-plugin` is found, the agent falls back to extracting from the POM's `<dependencies>` section.
 
 #### 3. p2.inf Files (Infrastructure Ready)
 Eclipse P2 installation instructions can be supported in future if needed.
@@ -140,8 +147,9 @@ Latest test run results:
 - **Status:** ✅ BUILD SUCCESS
 
 **Carbon-apimgt extraction:**
-- Found: 26 features (previously 0)
-- Format: Maven POM dependencies
+- Found: 26 features
+- Format: Maven POM with carbon-p2-plugin bundles configuration
+- Gateway feature: 47 bundles (from carbon-p2-plugin `<bundles>` section)
 - Examples: org.wso2.carbon.apimgt.gateway.feature, org.wso2.carbon.apimgt.rest.api.store.feature, etc.
 
 **Karaf extraction:**

@@ -31,8 +31,13 @@ Extracts all dependencies bundled in OSGI features from a Maven project.
 
 **Supports multiple feature formats:**
 - **Karaf-style feature XML files** (`*-features.xml`, `features.xml`)
-- **Maven POM files** in feature directories (e.g., `org.wso2.*.feature/pom.xml`)
+- **Maven POM files** with carbon-p2-plugin configuration (extracts from `<bundles>` section)
 - **p2.inf files** (Eclipse P2 format) - infrastructure ready
+
+**What gets extracted:**
+- For Maven POMs: Extracts bundles from the `carbon-p2-plugin` `<bundles>` section (the actual JARs that get packed)
+- For Karaf XML: Extracts from `<bundle>` and `<feature>` elements
+- Falls back to `<dependencies>` section if no carbon-p2-plugin found
 
 **Usage:**
 ```bash
@@ -82,14 +87,15 @@ This will create a JAR file in the `target` directory: `ai-agents-1.0.0-SNAPSHOT
    - **p2.inf**: Eclipse P2 installation instructions (infrastructure ready)
 3. Extracts dependencies from each format:
    - **Karaf XML**: Parses `<bundle>` and `<feature>` elements with Maven URL format
-   - **Maven POMs**: Extracts from `<dependencies>` section
+   - **Maven POMs**: Extracts bundles from `carbon-p2-plugin` `<bundles>` configuration (the actual JARs that get packed into the feature)
+   - Falls back to `<dependencies>` section if no carbon-p2-plugin found
 4. Organizes dependencies by feature name
 5. Returns a complete list of all dependencies with their Maven coordinates
 6. Cleans up the temporary directory
 
 **Supported Repository Types:**
 - Apache Karaf and Karaf-based projects (using feature XML files)
-- WSO2 Carbon projects (using Maven POM features like carbon-apimgt)
+- WSO2 Carbon projects (using Maven POM features with carbon-p2-plugin)
 - Eclipse P2-based projects (infrastructure ready)
 
 ## License

@@ -371,15 +371,28 @@ public class OsgiFeatureDependenciesAgent {
         }
         
         try {
-            String[] parts = bundleDef.trim().split(":");
-            if (parts.length >= 2) {
+            // Trim once before splitting
+            String trimmedBundleDef = bundleDef.trim();
+            String[] parts = trimmedBundleDef.split(":");
+            
+            // Validate we have at least groupId:artifactId
+            if (parts.length >= 2 && parts.length <= 3) {
+                String groupId = parts[0].trim();
+                String artifactId = parts[1].trim();
+                
+                // Ensure groupId and artifactId are not empty
+                if (groupId.isEmpty() || artifactId.isEmpty()) {
+                    return null;
+                }
+                
                 OsgiDependency dep = new OsgiDependency();
-                dep.setGroupId(parts[0].trim());
-                dep.setArtifactId(parts[1].trim());
+                dep.setGroupId(groupId);
+                dep.setArtifactId(artifactId);
                 
                 // Version is optional, might be a property reference like ${carbon.apimgt.version}
-                if (parts.length >= 3 && !parts[2].trim().isEmpty()) {
-                    dep.setVersion(parts[2].trim());
+                if (parts.length == 3) {
+                    String version = parts[2].trim();
+                    dep.setVersion(!version.isEmpty() ? version : UNSPECIFIED_VERSION);
                 } else {
                     dep.setVersion(UNSPECIFIED_VERSION);
                 }
