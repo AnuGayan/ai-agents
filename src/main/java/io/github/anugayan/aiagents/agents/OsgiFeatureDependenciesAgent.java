@@ -265,8 +265,11 @@ public class OsgiFeatureDependenciesAgent {
         List<OsgiDependency> dependencies = new ArrayList<>();
         
         try {
+            // Load properties from parent POM hierarchy for version resolution
+            Map<String, String> properties = loadPropertiesFromParentPoms(pomFile);
+            
             // First try to extract bundles from carbon-p2-plugin configuration
-            dependencies = extractBundlesFromP2Plugin(pomFile);
+            dependencies = extractBundlesFromP2Plugin(pomFile, properties);
             
             // If no bundles found in p2-plugin, fall back to dependencies
             if (dependencies.isEmpty()) {
@@ -283,7 +286,7 @@ public class OsgiFeatureDependenciesAgent {
     /**
      * Extract bundles from carbon-p2-plugin configuration in POM
      */
-    private List<OsgiDependency> extractBundlesFromP2Plugin(File pomFile) {
+    private List<OsgiDependency> extractBundlesFromP2Plugin(File pomFile, Map<String, String> properties) {
         List<OsgiDependency> bundles = new ArrayList<>();
         
         try {
@@ -305,7 +308,7 @@ public class OsgiFeatureDependenciesAgent {
                         Element artifactId = plugin.element("artifactId");
                         if (artifactId != null && "carbon-p2-plugin".equals(artifactId.getText())) {
                             // Found carbon-p2-plugin, extract bundles
-                            bundles.addAll(extractBundlesFromPlugin(plugin));
+                            bundles.addAll(extractBundlesFromPlugin(plugin, properties));
                             break;
                         }
                     }
@@ -322,7 +325,7 @@ public class OsgiFeatureDependenciesAgent {
     /**
      * Extract bundle definitions from carbon-p2-plugin configuration
      */
-    private List<OsgiDependency> extractBundlesFromPlugin(Element plugin) {
+    private List<OsgiDependency> extractBundlesFromPlugin(Element plugin, Map<String, String> properties) {
         List<OsgiDependency> bundles = new ArrayList<>();
         
         try {
@@ -335,7 +338,7 @@ public class OsgiFeatureDependenciesAgent {
                         if (bundlesElement != null) {
                             // Extract bundleDef elements
                             for (Element bundleDef : bundlesElement.elements("bundleDef")) {
-                                OsgiDependency dep = parseBundleDef(bundleDef.getText());
+                                OsgiDependency dep = parseBundleDef(bundleDef.getText(), properties);
                                 if (dep != null) {
                                     bundles.add(dep);
                                 }
@@ -343,7 +346,7 @@ public class OsgiFeatureDependenciesAgent {
                             
                             // Extract importBundleDef elements
                             for (Element importBundleDef : bundlesElement.elements("importBundleDef")) {
-                                OsgiDependency dep = parseBundleDef(importBundleDef.getText());
+                                OsgiDependency dep = parseBundleDef(importBundleDef.getText(), properties);
                                 if (dep != null) {
                                     dep.setType("import-bundle");
                                     bundles.add(dep);
@@ -362,10 +365,11 @@ public class OsgiFeatureDependenciesAgent {
     
     /**
      * Parse bundle definition in format: groupId:artifactId[:version]
+     * Resolves property references like ${carbon.apimgt.version} from properties map
      * Example: org.wso2.carbon.apimgt:org.wso2.carbon.apimgt.gateway
      * Example: org.wso2.carbon.apimgt:org.wso2.carbon.apimgt.api:${carbon.apimgt.version}
      */
-    private OsgiDependency parseBundleDef(String bundleDef) {
+    private OsgiDependency parseBundleDef(String bundleDef, Map<String, String> properties) {
         if (bundleDef == null || bundleDef.trim().isEmpty()) {
             return null;
         }
@@ -390,13 +394,20 @@ public class OsgiFeatureDependenciesAgent {
                 dep.setArtifactId(artifactId);
                 
                 // Version is optional, might be a property reference like ${carbon.apimgt.version}
+                String version;
                 if (parts.length == 3) {
-                    String version = parts[2].trim();
-                    dep.setVersion(!version.isEmpty() ? version : UNSPECIFIED_VERSION);
+                    version = parts[2].trim();
+                    if (!version.isEmpty()) {
+                        // Resolve property references
+                        version = resolveProperty(version, properties);
+                    } else {
+                        version = UNSPECIFIED_VERSION;
+                    }
                 } else {
-                    dep.setVersion(UNSPECIFIED_VERSION);
+                    version = UNSPECIFIED_VERSION;
                 }
                 
+                dep.setVersion(version);
                 dep.setType("bundle");
                 return dep;
             }
@@ -405,6 +416,70 @@ public class OsgiFeatureDependenciesAgent {
         }
         
         return null;
+    }
+    
+    /**
+     * Load properties from parent POM hierarchy
+     */
+    private Map<String, String> loadPropertiesFromParentPoms(File pomFile) {
+        Map<String, String> properties = new HashMap<>();
+        
+        try {
+            MavenXpp3Reader reader = new MavenXpp3Reader();
+            Model model = reader.read(new FileReader(pomFile));
+            
+            // Add properties from current POM
+            if (model.getProperties() != null) {
+                for (Map.Entry<Object, Object> entry : model.getProperties().entrySet()) {
+                    properties.put(entry.getKey().toString(), entry.getValue().toString());
+                }
+            }
+            
+            // Navigate to parent POM if it exists
+            if (model.getParent() != null && model.getParent().getRelativePath() != null) {
+                File parentPomFile = new File(pomFile.getParentFile(), model.getParent().getRelativePath());
+                if (parentPomFile.exists() && parentPomFile.isFile()) {
+                    // Recursively load parent properties (parent properties have lower priority)
+                    Map<String, String> parentProperties = loadPropertiesFromParentPoms(parentPomFile);
+                    // Parent properties first, then current POM properties (which override)
+                    parentProperties.putAll(properties);
+                    properties = parentProperties;
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.debug("Could not load properties from POM: {}", pomFile.getPath(), e);
+        }
+        
+        return properties;
+    }
+    
+    /**
+     * Resolve property reference like ${property.name} to actual value
+     */
+    private String resolveProperty(String value, Map<String, String> properties) {
+        if (value == null || !value.contains("${")) {
+            return value;
+        }
+        
+        String resolved = value;
+        // Pattern to match ${property.name}
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{([^}]+)\\}");
+        java.util.regex.Matcher matcher = pattern.matcher(value);
+        
+        while (matcher.find()) {
+            String propertyName = matcher.group(1);
+            String propertyValue = properties.get(propertyName);
+            
+            if (propertyValue != null) {
+                // Replace the property reference with actual value
+                resolved = resolved.replace("${" + propertyName + "}", propertyValue);
+            } else {
+                logger.debug("Could not resolve property: {}", propertyName);
+            }
+        }
+        
+        return resolved;
     }
     
     /**
