@@ -27,7 +27,12 @@ java -jar ai-agents.jar find-version https://github.com/apache/maven master org.
 ```
 
 ### 2. OSGI Feature Dependencies Agent
-Extracts all dependencies bundled in OSGI feature files from a Maven project.
+Extracts all dependencies bundled in OSGI features from a Maven project.
+
+**Supports multiple feature formats:**
+- **Karaf-style feature XML files** (`*-features.xml`, `features.xml`)
+- **Maven POM files** in feature directories (e.g., `org.wso2.*.feature/pom.xml`)
+- **p2.inf files** (Eclipse P2 format) - infrastructure ready
 
 **Usage:**
 ```bash
@@ -41,6 +46,7 @@ java -jar ai-agents.jar extract-features <repo-url> <branch> [token]
 
 **Example:**
 ```bash
+java -jar ai-agents.jar extract-features https://github.com/wso2/carbon-apimgt master
 java -jar ai-agents.jar extract-features https://github.com/apache/karaf main
 ```
 
@@ -70,11 +76,21 @@ This will create a JAR file in the `target` directory: `ai-agents-1.0.0-SNAPSHOT
 
 ### OSGI Feature Dependencies Agent
 1. Clones the specified Git repository to a temporary directory
-2. Recursively scans for OSGI feature XML files (files ending with `-features.xml` or named `features.xml`)
-3. Parses each feature file to extract bundle and feature dependencies
+2. Scans for OSGI features in multiple formats:
+   - **Karaf XML**: Files ending with `-features.xml` or named `features.xml`
+   - **Maven POMs**: POMs in directories matching `*.feature` pattern
+   - **p2.inf**: Eclipse P2 installation instructions (infrastructure ready)
+3. Extracts dependencies from each format:
+   - **Karaf XML**: Parses `<bundle>` and `<feature>` elements with Maven URL format
+   - **Maven POMs**: Extracts from `<dependencies>` section
 4. Organizes dependencies by feature name
 5. Returns a complete list of all dependencies with their Maven coordinates
 6. Cleans up the temporary directory
+
+**Supported Repository Types:**
+- Apache Karaf and Karaf-based projects (using feature XML files)
+- WSO2 Carbon projects (using Maven POM features like carbon-apimgt)
+- Eclipse P2-based projects (infrastructure ready)
 
 ## License
 

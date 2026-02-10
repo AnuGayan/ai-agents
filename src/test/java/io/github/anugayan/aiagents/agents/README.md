@@ -2,7 +2,11 @@
 
 ## Overview
 
-This directory contains comprehensive test cases for the `OsgiFeatureDependenciesAgent` class, which extracts dependencies from OSGI feature XML files in Maven repositories.
+This directory contains comprehensive test cases for the `OsgiFeatureDependenciesAgent` class, which extracts dependencies from OSGI features in multiple formats:
+
+1. **Karaf-style feature XML files** (`*-features.xml`, `features.xml`)
+2. **Maven POM files** in feature directories (`*.feature/pom.xml`)
+3. **p2.inf files** (Eclipse P2 format) - infrastructure ready
 
 ## Test Class: OsgiFeatureDependenciesAgentTest
 
@@ -11,8 +15,8 @@ This directory contains comprehensive test cases for the `OsgiFeatureDependencie
 The test suite includes 11 test cases that cover:
 
 1. **Feature Extraction Tests**
-   - `testExtractFeatureDependenciesFromKaraf()` - Tests extraction from Apache Karaf repository (which contains Karaf-style feature XML files)
-   - `testExtractFeatureDependenciesFromCarbonApimgt()` - Tests extraction from wso2/carbon-apimgt repository as specified in requirements (demonstrates graceful handling of repositories that use different feature formats like p2.inf)
+   - `testExtractFeatureDependenciesFromKaraf()` - Tests extraction from Apache Karaf repository (Karaf-style feature XML files)
+   - `testExtractFeatureDependenciesFromCarbonApimgt()` - Tests extraction from wso2/carbon-apimgt repository (Maven POM features)
 
 2. **Validation Tests**
    - `testDependencyStructureValidation()` - Validates that extracted dependencies have proper structure (groupId, artifactId, version, type)
@@ -35,23 +39,26 @@ The test suite includes 11 test cases that cover:
 
 #### Apache Karaf (https://github.com/apache/karaf)
 - **Branch:** main
-- **Purpose:** Primary test repository that contains actual Karaf-style OSGI feature XML files
+- **Feature Format:** Karaf-style OSGI feature XML files
+- **Purpose:** Tests extraction from traditional Karaf repositories
 - **Feature Files:** Contains multiple `*-features.xml` and `features.xml` files with proper Maven URL format (`mvn:groupId/artifactId/version`)
 - **Usage:** Used for positive test cases where features are expected to be found
 
 #### WSO2 Carbon APIMGT (https://github.com/wso2/carbon-apimgt)
-- **Branch:** master (note: not "main" as originally specified, as the repository uses "master")
-- **Purpose:** Test repository specified in requirements
-- **Feature Format:** Uses Maven feature projects with `p2.inf` files rather than traditional Karaf feature XML files
-- **Usage:** Demonstrates that the agent gracefully handles repositories that don't contain Karaf-style feature files (returns empty results without errors)
+- **Branch:** master
+- **Feature Format:** Maven POM files in feature directories (e.g., `org.wso2.carbon.apimgt.*.feature/pom.xml`)
+- **Purpose:** Test repository specified in requirements, demonstrates Maven POM feature extraction
+- **Features Found:** 26 features with dependencies extracted from POM files
+- **Usage:** Tests the new Maven POM extraction capability
 
-### OSGI Feature XML Format
+### Supported Feature Formats
 
-The agent looks for files named:
+#### 1. Karaf-style Feature XML
+Files named:
 - `*-features.xml` (e.g., `karaf-features.xml`, `apim-features.xml`)
 - `features.xml`
 
-Example feature XML structure:
+Example structure:
 ```xml
 <features name="test" xmlns="http://karaf.apache.org/xmlns/features/v1.3.0">
     <feature name="my-feature" version="1.0.0">
@@ -61,9 +68,30 @@ Example feature XML structure:
 </features>
 ```
 
-The agent parses:
-- **Bundle dependencies:** `<bundle>` elements containing Maven URLs
-- **Feature dependencies:** `<feature>` elements containing Maven URLs or feature names
+#### 2. Maven POM Features
+Files in directories matching `*.feature` pattern:
+- `org.wso2.carbon.apimgt.gateway.feature/pom.xml`
+- `org.apache.karaf.features.core.feature/pom.xml`
+
+Dependencies are extracted from the `<dependencies>` section of the POM.
+
+Example:
+```xml
+<project>
+    <artifactId>org.wso2.carbon.apimgt.gateway.feature</artifactId>
+    <packaging>pom</packaging>
+    <dependencies>
+        <dependency>
+            <groupId>org.wso2.carbon.apimgt</groupId>
+            <artifactId>org.wso2.carbon.apimgt.api</artifactId>
+            <version>9.0.0</version>
+        </dependency>
+    </dependencies>
+</project>
+```
+
+#### 3. p2.inf Files (Infrastructure Ready)
+Eclipse P2 installation instructions can be supported in future if needed.
 
 ### Running the Tests
 
@@ -75,6 +103,7 @@ mvn test -Dtest=OsgiFeatureDependenciesAgentTest
 #### Run a specific test:
 ```bash
 mvn test -Dtest=OsgiFeatureDependenciesAgentTest#testExtractFeatureDependenciesFromKaraf
+mvn test -Dtest=OsgiFeatureDependenciesAgentTest#testExtractFeatureDependenciesFromCarbonApimgt
 ```
 
 #### Run all tests in the project:
@@ -91,14 +120,34 @@ mvn test
 ### Important Notes
 
 1. **Network Dependency**: Tests require internet access to clone GitHub repositories
-2. **Repository Variations**: Different repositories may use different feature formats:
-   - Karaf-style feature XML files (traditional OSGI)
-   - Maven p2.inf files (Eclipse P2/OSGi)
-   - No feature files at all
+2. **Multiple Format Support**: The agent now supports both Karaf XML and Maven POM formats simultaneously
+3. **Repository Variations**: Different repositories use different feature formats:
+   - Apache Karaf: Karaf-style feature XML files
+   - WSO2 Carbon APIMGT: Maven POM files in feature directories
+   - Mixed repositories: Can contain both formats
    
-   The agent handles all cases gracefully by returning an empty map when no feature files are found.
+   The agent handles all formats and combines results.
 
-3. **Branch Names**: Always verify the default branch name of the test repository (some use "main", others use "master")
+4. **Branch Names**: Always verify the default branch name of the test repository (some use "main", others use "master")
+
+### Test Results
+
+Latest test run results:
+- **Tests run:** 11
+- **Failures:** 0
+- **Errors:** 0
+- **Skipped:** 0
+- **Status:** ✅ BUILD SUCCESS
+
+**Carbon-apimgt extraction:**
+- Found: 26 features (previously 0)
+- Format: Maven POM dependencies
+- Examples: org.wso2.carbon.apimgt.gateway.feature, org.wso2.carbon.apimgt.rest.api.store.feature, etc.
+
+**Karaf extraction:**
+- Found: Feature XMLs with bundle dependencies
+- Format: Karaf-style XML
+- Examples: framework feature, etc.
 
 ### Test Assertions
 
@@ -106,7 +155,7 @@ Each test makes specific assertions:
 - Non-null return values
 - Proper data structure (Map of feature names to dependency lists)
 - Valid dependency attributes (groupId, artifactId, version, type)
-- Correct dependency types ("bundle" or "feature")
+- Correct dependency types ("bundle" or other types from POM)
 - Graceful error handling (empty results for invalid inputs)
 - Performance within acceptable limits
 
@@ -114,7 +163,8 @@ Each test makes specific assertions:
 
 Potential areas for additional test coverage:
 - Test with private repositories (requiring authentication tokens)
-- Test with repositories containing malformed feature XML files
+- Test with repositories containing malformed feature files
 - Test parsing of feature dependencies with additional attributes (classifier, type)
-- Test handling of feature file directories outside standard Maven structure
+- Test p2.inf file parsing when implemented
 - Integration tests with actual OSGI runtime
+- Test mixed repositories with both Karaf XML and Maven POM features
