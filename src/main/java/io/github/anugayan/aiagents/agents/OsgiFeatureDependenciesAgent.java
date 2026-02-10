@@ -15,8 +15,10 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Agent to extract dependencies from OSGI features in multiple formats:
@@ -26,6 +28,16 @@ import java.util.Map;
  */
 public class OsgiFeatureDependenciesAgent {
     private static final Logger logger = LoggerFactory.getLogger(OsgiFeatureDependenciesAgent.class);
+    
+    // Constants for dependency handling
+    private static final String UNSPECIFIED_VERSION = "unspecified";
+    private static final Set<String> BUNDLE_TYPES = new HashSet<>();
+    
+    static {
+        BUNDLE_TYPES.add("jar");
+        BUNDLE_TYPES.add("war");
+        BUNDLE_TYPES.add(null); // Default Maven type
+    }
 
     /**
      * Extract all dependencies bundled in OSGI features from a Maven project
@@ -190,7 +202,7 @@ public class OsgiFeatureDependenciesAgent {
                 return artifactId;
             }
         } catch (Exception e) {
-            logger.debug("Could not extract feature name from POM, using parent directory name", e);
+            logger.debug("Could not extract feature name from POM {}, using parent directory name", pomFile.getPath(), e);
         }
         
         // Fallback to parent directory name
@@ -261,11 +273,11 @@ public class OsgiFeatureDependenciesAgent {
                     OsgiDependency osgiDep = new OsgiDependency();
                     osgiDep.setGroupId(dep.getGroupId());
                     osgiDep.setArtifactId(dep.getArtifactId());
-                    osgiDep.setVersion(dep.getVersion() != null ? dep.getVersion() : "unspecified");
+                    osgiDep.setVersion(dep.getVersion() != null ? dep.getVersion() : UNSPECIFIED_VERSION);
                     
                     // Determine type based on packaging or scope
                     String type = dep.getType();
-                    if ("war".equalsIgnoreCase(type) || "jar".equalsIgnoreCase(type) || type == null) {
+                    if (BUNDLE_TYPES.contains(type)) {
                         osgiDep.setType("bundle");
                     } else {
                         osgiDep.setType(type);
