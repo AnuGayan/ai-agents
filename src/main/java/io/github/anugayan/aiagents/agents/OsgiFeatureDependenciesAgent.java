@@ -32,6 +32,8 @@ public class OsgiFeatureDependenciesAgent {
     // Constants for dependency handling
     private static final String UNSPECIFIED_VERSION = "unspecified";
     private static final Set<String> BUNDLE_TYPES = new HashSet<>();
+    private static final java.util.regex.Pattern PROPERTY_PATTERN = 
+        java.util.regex.Pattern.compile("\\$\\{([^}]+)\\}");
     
     static {
         BUNDLE_TYPES.add("jar");
@@ -436,14 +438,30 @@ public class OsgiFeatureDependenciesAgent {
             }
             
             // Navigate to parent POM if it exists
-            if (model.getParent() != null && model.getParent().getRelativePath() != null) {
-                File parentPomFile = new File(pomFile.getParentFile(), model.getParent().getRelativePath());
-                if (parentPomFile.exists() && parentPomFile.isFile()) {
-                    // Recursively load parent properties (parent properties have lower priority)
-                    Map<String, String> parentProperties = loadPropertiesFromParentPoms(parentPomFile);
-                    // Parent properties first, then current POM properties (which override)
-                    parentProperties.putAll(properties);
-                    properties = parentProperties;
+            if (model.getParent() != null) {
+                String relativePath = model.getParent().getRelativePath();
+                // Use default Maven convention if not specified
+                if (relativePath == null || relativePath.trim().isEmpty()) {
+                    relativePath = "../pom.xml";
+                }
+                
+                File parentPomFile = new File(pomFile.getParentFile(), relativePath);
+                // Normalize and validate path to prevent path traversal
+                try {
+                    String canonicalParentPath = parentPomFile.getCanonicalPath();
+                    String canonicalRepoRoot = pomFile.getParentFile().getCanonicalPath();
+                    
+                    // Ensure parent POM is within repository boundaries
+                    if (parentPomFile.exists() && parentPomFile.isFile() && 
+                        canonicalParentPath.startsWith(canonicalRepoRoot)) {
+                        // Recursively load parent properties (parent properties have lower priority)
+                        Map<String, String> parentProperties = loadPropertiesFromParentPoms(parentPomFile);
+                        // Parent properties first, then current POM properties (which override)
+                        parentProperties.putAll(properties);
+                        properties = parentProperties;
+                    }
+                } catch (IOException e) {
+                    logger.debug("Could not resolve parent POM canonical path: {}", parentPomFile.getPath(), e);
                 }
             }
             
@@ -463,9 +481,8 @@ public class OsgiFeatureDependenciesAgent {
         }
         
         String resolved = value;
-        // Pattern to match ${property.name}
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{([^}]+)\\}");
-        java.util.regex.Matcher matcher = pattern.matcher(value);
+        // Use pre-compiled pattern
+        java.util.regex.Matcher matcher = PROPERTY_PATTERN.matcher(value);
         
         while (matcher.find()) {
             String propertyName = matcher.group(1);

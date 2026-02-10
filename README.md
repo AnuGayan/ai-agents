@@ -39,6 +39,11 @@ Extracts all dependencies bundled in OSGI features from a Maven project.
 - For Karaf XML: Extracts from `<bundle>` and `<feature>` elements
 - Falls back to `<dependencies>` section if no carbon-p2-plugin found
 
+**Version Resolution:**
+- Property references like `${carbon.apimgt.version}` are resolved from parent POM properties
+- Actual version values are extracted from the POM hierarchy
+- Provides accurate, concrete version information
+
 **Usage:**
 ```bash
 java -jar ai-agents.jar extract-features <repo-url> <branch> [token]
@@ -89,9 +94,10 @@ This will create a JAR file in the `target` directory: `ai-agents-1.0.0-SNAPSHOT
    - **Karaf XML**: Parses `<bundle>` and `<feature>` elements with Maven URL format
    - **Maven POMs**: Extracts bundles from `carbon-p2-plugin` `<bundles>` configuration (the actual JARs that get packed into the feature)
    - Falls back to `<dependencies>` section if no carbon-p2-plugin found
-4. Organizes dependencies by feature name
-5. Returns a complete list of all dependencies with their Maven coordinates
-6. Cleans up the temporary directory
+4. **Resolves version properties**: Property references like `${carbon.apimgt.version}` are resolved from parent POM properties
+5. Organizes dependencies by feature name
+6. Returns a complete list of all dependencies with their Maven coordinates and resolved versions
+7. Cleans up the temporary directory
 
 **Supported Repository Types:**
 - Apache Karaf and Karaf-based projects (using feature XML files)
