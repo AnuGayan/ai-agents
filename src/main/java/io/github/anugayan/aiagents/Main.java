@@ -118,8 +118,10 @@ public class Main {
         String token = null;
         
         // Determine if last argument is a token (starts with gh or has specific patterns)
+        // Also ensure it's not a URL (doesn't contain :// or /)
         String lastArg = args[args.length - 1];
-        boolean hasToken = lastArg.startsWith("ghp_") || lastArg.startsWith("github_pat_");
+        boolean hasToken = (lastArg.startsWith("ghp_") || lastArg.startsWith("github_pat_")) 
+                          && !lastArg.contains("://") && !lastArg.contains("/");
         
         int endIndex = hasToken ? args.length - 1 : args.length;
         

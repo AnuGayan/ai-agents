@@ -106,7 +106,10 @@ public class MultiBranchOsgiDependenciesAgent {
      * Example: https://github.com/user/repo.git -> repo
      */
     private String extractRepoName(String repoUrl) {
-        String[] parts = repoUrl.split("/");
+        // Remove trailing slashes
+        String url = repoUrl.replaceAll("/+$", "");
+        
+        String[] parts = url.split("/");
         String lastPart = parts[parts.length - 1];
         // Remove .git suffix if present
         if (lastPart.endsWith(".git")) {

@@ -88,6 +88,11 @@ class MultiBranchOsgiDependenciesAgentTest {
         assertEquals("karaf", method.invoke(agent, "https://github.com/apache/karaf"));
         assertEquals("karaf", method.invoke(agent, "https://github.com/apache/karaf.git"));
         assertEquals("carbon-apimgt", method.invoke(agent, "https://github.com/wso2/carbon-apimgt.git"));
+        
+        // Test with trailing slash
+        assertEquals("karaf", method.invoke(agent, "https://github.com/apache/karaf/"));
+        assertEquals("karaf", method.invoke(agent, "https://github.com/apache/karaf.git/"));
+        assertEquals("karaf", method.invoke(agent, "https://github.com/apache/karaf//"));
     }
     
     @Test
@@ -106,6 +111,9 @@ class MultiBranchOsgiDependenciesAgentTest {
         
         // Test value with quote
         assertEquals("\"test\"\"value\"", method.invoke(agent, "test\"value"));
+        
+        // Test value with newline
+        assertEquals("\"test\nvalue\"", method.invoke(agent, "test\nvalue"));
         
         // Test null value
         assertEquals("", method.invoke(agent, (String) null));
@@ -192,19 +200,19 @@ class MultiBranchOsgiDependenciesAgentTest {
     }
     
     @Test
-    @DisplayName("Test multiple repositories processing")
+    @DisplayName("Test single repository processing")
     @Timeout(value = 15, unit = TimeUnit.MINUTES)
-    void testMultipleRepositories() {
-        // Use two different repositories
+    void testSingleRepositoryProcessing() {
+        // Use a single repository
         List<String> repoUrls = Arrays.asList(
             "https://github.com/apache/karaf"
         );
         
         int recordCount = agent.extractDependencies(repoUrls, null, tempOutputFile.toString());
         
-        assertTrue(recordCount >= 0, "Should process multiple repositories");
+        assertTrue(recordCount >= 0, "Should process repository successfully");
         assertTrue(Files.exists(tempOutputFile), "CSV file should be created");
         
-        System.out.println("Processed multiple repositories with " + recordCount + " total records");
+        System.out.println("Processed repository with " + recordCount + " total records");
     }
 }
