@@ -48,7 +48,9 @@ class OsgiFeatureDependenciesAgentTest {
             
             assertNotNull(featureName, "Feature name should not be null");
             assertNotNull(deps, "Dependency list should not be null");
-            assertFalse(deps.isEmpty(), "Feature should have at least one dependency");
+            // Note: The agent only includes features with dependencies in the map,
+            // so all features in the result should have at least one dependency
+            assertFalse(deps.isEmpty(), "Features in the result map should have at least one dependency");
             
             System.out.println("\nFeature: " + featureName);
             System.out.println("Number of dependencies: " + deps.size());
@@ -301,10 +303,6 @@ class OsgiFeatureDependenciesAgentTest {
             assertNotNull(featureName);
             assertFalse(featureName.isEmpty(), "Feature name should not be empty");
             assertFalse(featureName.isBlank(), "Feature name should not be blank");
-            
-            // Feature names should have some meaningful length
-            assertTrue(featureName.length() > 0, 
-                "Feature name should be meaningful, but was: " + featureName);
         }
     }
 }
