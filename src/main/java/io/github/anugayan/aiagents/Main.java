@@ -1,8 +1,11 @@
 package io.github.anugayan.aiagents;
 
 import io.github.anugayan.aiagents.agents.MavenDependencyVersionAgent;
+import io.github.anugayan.aiagents.agents.MultiBranchOsgiDependenciesAgent;
 import io.github.anugayan.aiagents.agents.OsgiFeatureDependenciesAgent;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +31,9 @@ public class Main {
                 break;
             case "extract-features":
                 handleExtractFeatures(args);
+                break;
+            case "extract-multi-branch":
+                handleExtractMultiBranch(args);
                 break;
             default:
                 System.err.println("Unknown command: " + command);
@@ -98,20 +104,66 @@ public class Main {
         }
     }
 
+    private static void handleExtractMultiBranch(String[] args) {
+        if (args.length < 3) {
+            System.err.println("Usage: extract-multi-branch <output-csv-file> <repo-url-1> [repo-url-2] ... [token]");
+            System.err.println("Note: Token should be the last argument if provided");
+            return;
+        }
+
+        String outputFile = args[1];
+        
+        // Parse repository URLs and optional token
+        List<String> repoUrls = new ArrayList<>();
+        String token = null;
+        
+        // Determine if last argument is a token (starts with gh or has specific patterns)
+        String lastArg = args[args.length - 1];
+        boolean hasToken = lastArg.startsWith("ghp_") || lastArg.startsWith("github_pat_");
+        
+        int endIndex = hasToken ? args.length - 1 : args.length;
+        
+        for (int i = 2; i < endIndex; i++) {
+            repoUrls.add(args[i]);
+        }
+        
+        if (hasToken) {
+            token = lastArg;
+        }
+
+        System.out.println("Extracting OSGI feature dependencies from multiple repositories and branches...");
+        System.out.println("Output file: " + outputFile);
+        System.out.println("Repositories: " + repoUrls.size());
+        for (String repoUrl : repoUrls) {
+            System.out.println("  - " + repoUrl);
+        }
+        System.out.println("Branch filter: support-*x-full");
+        System.out.println();
+
+        MultiBranchOsgiDependenciesAgent agent = new MultiBranchOsgiDependenciesAgent();
+        int recordCount = agent.extractDependencies(repoUrls, token, outputFile);
+
+        System.out.println("\nSUCCESS: Extracted " + recordCount + " dependency records");
+        System.out.println("Output written to: " + outputFile);
+    }
+
     private static void printUsage() {
         System.out.println("Usage:");
         System.out.println("  java -jar ai-agents.jar find-version <repo-url> <branch> <groupId> <artifactId> [token]");
         System.out.println("  java -jar ai-agents.jar extract-features <repo-url> <branch> [token]");
+        System.out.println("  java -jar ai-agents.jar extract-multi-branch <output-csv-file> <repo-url-1> [repo-url-2] ... [token]");
         System.out.println();
         System.out.println("Commands:");
-        System.out.println("  find-version      - Find the version of a dependency in a Maven project");
-        System.out.println("  extract-features  - Extract dependencies from OSGI feature files");
+        System.out.println("  find-version         - Find the version of a dependency in a Maven project");
+        System.out.println("  extract-features     - Extract dependencies from OSGI feature files");
+        System.out.println("  extract-multi-branch - Extract dependencies from multiple repos across support-*x-full branches to CSV");
         System.out.println();
         System.out.println("Parameters:");
-        System.out.println("  repo-url    - Git repository URL (e.g., https://github.com/user/repo)");
-        System.out.println("  branch      - Branch name to analyze");
-        System.out.println("  groupId     - Maven dependency groupId");
-        System.out.println("  artifactId  - Maven dependency artifactId");
-        System.out.println("  token       - Optional GitHub token for private repositories");
+        System.out.println("  repo-url         - Git repository URL (e.g., https://github.com/user/repo)");
+        System.out.println("  branch           - Branch name to analyze");
+        System.out.println("  groupId          - Maven dependency groupId");
+        System.out.println("  artifactId       - Maven dependency artifactId");
+        System.out.println("  output-csv-file  - Path to output CSV file");
+        System.out.println("  token            - Optional GitHub token for private repositories");
     }
 }
